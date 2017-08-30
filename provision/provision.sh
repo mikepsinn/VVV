@@ -24,6 +24,8 @@ apt_package_install_list=()
 # virtual machine. We'll then loop through each of these and check individual
 # status before adding them to the apt_package_install_list array.
 apt_package_check_list=(
+  # Please avoid apostrophes in these comments - they break vim syntax
+  # highlighting.
 
   # PHP7
   #
@@ -39,9 +41,11 @@ apt_package_check_list=(
 
   # Extra PHP modules that we find useful
   php-pear
-  php7.0-imagick
-  php7.0-memcache
-  php7.0-memcached
+  php-imagick
+  php-memcache
+  php-memcached
+  php-ssh2
+  php-xdebug
   php7.0-bcmath
   php7.0-curl
   php7.0-gd
@@ -51,8 +55,6 @@ apt_package_check_list=(
   php7.0-imap
   php7.0-json
   php7.0-soap
-  php7.0-ssh2
-  php7.0-xdebug
   php7.0-xml
   php7.0-zip
 
@@ -82,22 +84,22 @@ apt_package_check_list=(
   # ntp service to keep clock current
   ntp
 
-  # Req'd for i18n tools
+  # Required for i18n tools
   gettext
 
-  # Req'd for Webgrind
+  # Required for Webgrind
   graphviz
 
   # dos2unix
-  # Allows conversion of DOS style line endings to something we'll have less
-  # trouble with in Linux.
+  # Allows conversion of DOS style line endings to something less troublesome
+  # in Linux.
   dos2unix
 
   # nodejs for use by grunt
   g++
   nodejs
 
-  #Mailcatcher requirement
+  # Mailcatcher requirement
   libsqlite3-dev
 
 )
@@ -227,8 +229,8 @@ package_install() {
   # Use debconf-set-selections to specify the default password for the root MariaDB
   # account. This runs on every provision, even if MariaDB has been installed. If
   # MariaDB is already installed, it will not affect anything.
-  echo mariadb-server-5.5 mysql-server/root_password password "root" | debconf-set-selections
-  echo mariadb-server-5.5 mysql-server/root_password_again password "root" | debconf-set-selections
+  echo mariadb-server-10.1 mysql-server/root_password password "root" | debconf-set-selections
+  echo mariadb-server-10.1 mysql-server/root_password_again password "root" | debconf-set-selections
 
   # Postfix
   #
@@ -238,9 +240,6 @@ package_install() {
   # able to send mail, even with postfix installed.
   echo postfix postfix/main_mailer_type select Internet Site | debconf-set-selections
   echo postfix postfix/mailname string vvv | debconf-set-selections
-
-  # Disable ipv6 as some ISPs/mail servers have problems with it
-  echo "inet_protocols = ipv4" >> "/etc/postfix/main.cf"
 
   # Provide our custom apt sources before running `apt-get update`
   ln -sf /srv/config/apt-source-append.list /etc/apt/sources.list.d/vvv-sources.list
@@ -264,8 +263,13 @@ package_install() {
     wget --quiet "http://nginx.org/keys/nginx_signing.key" -O- | apt-key add -
 
     # Apply the PHP signing key
+    echo "Applying the PHP signing key..."
     apt-key adv --quiet --keyserver "hkp://keyserver.ubuntu.com:80" --recv-key E5267A6C 2>&1 | grep "gpg:"
     apt-key export E5267A6C | apt-key add -
+
+    # Apply the MariaDB signing key
+    echo "Applying the MariaDB signing key..."
+    apt-key adv --quiet --recv-keys --keyserver hkp://keyserver.ubuntu.com:80 0xcbcb082a1bb943db
 
     # Update all of the package references before installing anything
     echo "Running apt-get update..."
@@ -306,7 +310,9 @@ tools_install() {
   # npm
   #
   # Make sure we have the latest npm version and the update checker module
+  echo "Installing/updating npm..."
   npm install -g npm
+  echo "Installing/updating npm-check-updates..."
   npm install -g npm-check-updates
 
   # ack-grep
@@ -317,7 +323,7 @@ tools_install() {
     echo "ack-grep already installed"
   else
     echo "Installing ack-grep as ack"
-    curl -s http://beyondgrep.com/ack-2.14-single-file > "/usr/bin/ack" && chmod +x "/usr/bin/ack"
+    curl -s https://beyondgrep.com/ack-2.16-single-file > "/usr/bin/ack" && chmod +x "/usr/bin/ack"
   fi
 
   # COMPOSER
@@ -340,32 +346,50 @@ tools_install() {
   # the master branch on its GitHub repository.
   if [[ -n "$(composer --version --no-ansi | grep 'Composer version')" ]]; then
     echo "Updating Composer..."
-    COMPOSER_HOME=/usr/local/src/composer composer self-update
-    COMPOSER_HOME=/usr/local/src/composer composer -q global require --no-update phpunit/phpunit:5.*
-    COMPOSER_HOME=/usr/local/src/composer composer -q global require --no-update phpunit/php-invoker:1.1.*
-    COMPOSER_HOME=/usr/local/src/composer composer -q global require --no-update mockery/mockery:0.9.*
-    COMPOSER_HOME=/usr/local/src/composer composer -q global require --no-update d11wtq/boris:v1.0.8
-    COMPOSER_HOME=/usr/local/src/composer composer -q global config bin-dir /usr/local/bin
-    COMPOSER_HOME=/usr/local/src/composer composer global update
+    COMPOSER_HOME=/usr/local/src/composer composer --no-ansi self-update
+    COMPOSER_HOME=/usr/local/src/composer composer --no-ansi global require --no-update phpunit/phpunit:5.*
+    COMPOSER_HOME=/usr/local/src/composer composer --no-ansi global require --no-update phpunit/php-invoker:1.1.*
+    COMPOSER_HOME=/usr/local/src/composer composer --no-ansi global require --no-update mockery/mockery:0.9.*
+    COMPOSER_HOME=/usr/local/src/composer composer --no-ansi global require --no-update d11wtq/boris:v1.0.8
+    COMPOSER_HOME=/usr/local/src/composer composer --no-ansi global config bin-dir /usr/local/bin
+    COMPOSER_HOME=/usr/local/src/composer composer --no-ansi global update
   fi
 
   # Grunt
   #
   # Install or Update Grunt based on current state.  Updates are direct
   # from NPM
+  function hack_avoid_gyp_errors() {
+    # Without this, we get a bunch of errors when installing `grunt-sass`:
+    # > node scripts/install.js
+    # Unable to save binary /usr/lib/node_modules/.../node-sass/.../linux-x64-48 :
+    # { Error: EACCES: permission denied, mkdir '/usr/lib/node_modules/... }
+    # Then, node-gyp generates tons of errors like:
+    # WARN EACCES user "root" does not have permission to access the dev dir
+    # "/usr/lib/node_modules/grunt-sass/node_modules/node-sass/.node-gyp/6.11.2"
+    # TODO: Why do child processes of `npm` run as `nobody`?
+    while [ ! -f /tmp/stop_gyp_hack ]; do
+      if [ -d /usr/lib/node_modules/grunt-sass/ ]; then
+        chown -R nobody:vagrant /usr/lib/node_modules/grunt-sass/
+      fi
+      sleep .2
+    done
+    rm /tmp/stop_gyp_hack
+  }
   if [[ "$(grunt --version)" ]]; then
     echo "Updating Grunt CLI"
-    npm update -g grunt-cli &>/dev/null
-    npm update -g grunt-sass &>/dev/null
-    npm update -g grunt-cssjanus &>/dev/null
-    npm update -g grunt-rtlcss &>/dev/null
+    npm update -g grunt-cli
+    hack_avoid_gyp_errors & npm update -g grunt-sass; touch /tmp/stop_gyp_hack
+    npm update -g grunt-cssjanus
+    npm update -g grunt-rtlcss
   else
     echo "Installing Grunt CLI"
-    npm install -g grunt-cli &>/dev/null
-    npm install -g grunt-sass &>/dev/null
-    npm install -g grunt-cssjanus &>/dev/null
-    npm install -g grunt-rtlcss &>/dev/null
+    npm install -g grunt-cli
+    hack_avoid_gyp_errors & npm install -g grunt-sass; touch /tmp/stop_gyp_hack
+    npm install -g grunt-cssjanus
+    npm install -g grunt-rtlcss
   fi
+  chown -R vagrant:vagrant /usr/lib/node_modules/
 
   # Graphviz
   #
@@ -513,7 +537,7 @@ mailcatcher_setup() {
     gpg -q --no-tty --batch --keyserver "hkp://keyserver.ubuntu.com:80" --recv-keys BF04FF17
 
     printf " * RVM [not installed]\n Installing from source"
-    curl --silent -L "https://get.rvm.io" | sudo bash -s stable --ruby
+    curl --silent -L "https://raw.githubusercontent.com/rvm/rvm/stable/binscripts/rvm-installer" | sudo bash -s stable --ruby --quiet-curl
     source "/usr/local/rvm/scripts/rvm"
   fi
 
@@ -594,36 +618,15 @@ wp_cli() {
 
 php_codesniff() {
   # PHP_CodeSniffer (for running WordPress-Coding-Standards)
-  if [[ ! -d "/srv/www/phpcs" ]]; then
-    echo -e "\nDownloading PHP_CodeSniffer (phpcs), see https://github.com/squizlabs/PHP_CodeSniffer"
-    git clone -b master "https://github.com/squizlabs/PHP_CodeSniffer.git" "/srv/www/phpcs"
-  else
-    cd /srv/www/phpcs
-    if [[ $(git rev-parse --abbrev-ref HEAD) == 'master' ]]; then
-      echo -e "\nUpdating PHP_CodeSniffer (phpcs)..."
-      git pull --no-edit origin master
-    else
-      echo -e "\nSkipped updating PHP_CodeSniffer since not on master branch"
-    fi
-  fi
+  # Sniffs WordPress Coding Standards
+  echo -e "\nInstall/Update PHP_CodeSniffer (phpcs), see https://github.com/squizlabs/PHP_CodeSniffer"
+  echo -e "\nInstall/Update WordPress-Coding-Standards, sniffs for PHP_CodeSniffer, see https://github.com/WordPress-Coding-Standards/WordPress-Coding-Standards"
+  cd /vagrant/provision/phpcs
+  composer update --no-ansi --no-autoloader
 
   # Link `phpcbf` and `phpcs` to the `/usr/local/bin` directory
   ln -sf "/srv/www/phpcs/scripts/phpcbf" "/usr/local/bin/phpcbf"
   ln -sf "/srv/www/phpcs/scripts/phpcs" "/usr/local/bin/phpcs"
-
-  # Sniffs WordPress Coding Standards
-  if [[ ! -d "/srv/www/phpcs/CodeSniffer/Standards/WordPress" ]]; then
-    echo -e "\nDownloading WordPress-Coding-Standards, sniffs for PHP_CodeSniffer, see https://github.com/WordPress-Coding-Standards/WordPress-Coding-Standards"
-    git clone -b master "https://github.com/WordPress-Coding-Standards/WordPress-Coding-Standards.git" "/srv/www/phpcs/CodeSniffer/Standards/WordPress"
-  else
-    cd /srv/www/phpcs/CodeSniffer/Standards/WordPress
-    if [[ $(git rev-parse --abbrev-ref HEAD) == 'master' ]]; then
-      echo -e "\nUpdating PHP_CodeSniffer WordPress Coding Standards..."
-      git pull --no-edit origin master
-    else
-      echo -e "\nSkipped updating PHPCS WordPress Coding Standards since not on master branch"
-    fi
-  fi
 
   # Install the standards in PHPCS
   phpcs --config-set installed_paths ./CodeSniffer/Standards/WordPress/
