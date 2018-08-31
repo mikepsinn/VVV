@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="WebServers">
+    <option name="servers">
+      <webServer id="1a51b481-1c46-4fb7-8e30-0c4b48eb3992" name="siteground" url="https://deepak.quantimodo.com">
+        <fileTransfer host="us61.siteground.us" port="21" rootFolder="/public_html/deepak.quantimodo.com/wp-content/plugins">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" />
+          </advancedOptions>
+          <option name="port" value="21" />
+        </fileTransfer>
+      </webServer>
+    </option>
+  </component>
+</project>

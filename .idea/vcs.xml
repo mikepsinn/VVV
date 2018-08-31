@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="VcsDirectoryMappings">
+    <mapping directory="" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/config/nvm" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/provision/resources/core" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/www/default/dashboard" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/www/default/opcache-status" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/www/default/webgrind" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/www/wordpress-default" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/www/wordpress-default/public_html/wp-content/plugins/qm-wp" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/www/wordpress-develop" vcs="Git" />
+  </component>
+</project>
